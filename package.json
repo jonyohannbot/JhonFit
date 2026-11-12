@@ -1,0 +1,21 @@
+{
+  "name": "jhonfit",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Jhon Fit — PWA de treinos com login e sincronização (Supabase).",
+  "scripts": {
+    "start": "npx http-server app -p 8080 -c-1 --silent",
+    "lint": "eslint .",
+    "check": "node scripts/check.mjs",
+    "test": "playwright test",
+    "ci": "npm run lint && npm run check && npm test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.49.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "http-server": "^14.1.1"
+  }
+}

@@ -1,0 +1,13 @@
+# O Dependabot abre pull requests mensais com atualizações das ferramentas de teste e das actions.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: monthly }
+    groups:
+      dev-tools: { patterns: ['*'] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    groups:
+      actions: { patterns: ['*'] }

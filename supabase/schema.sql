@@ -37,6 +37,9 @@ create policy "apagar os próprios dados" on public.user_data
 -- 3) Permissões: visitantes anônimos não têm acesso algum à tabela.
 revoke all on public.user_data from anon;
 grant select, insert, update, delete on public.user_data to authenticated;
+-- A chave secreta (service_role) é usada pelo backup automático. O projeto foi criado com
+-- "Automatically expose new tables" desligado, então ela também precisa de permissão explícita.
+grant select, insert, update, delete on public.user_data to service_role;
 
 -- 4) "Excluir minha conta": o app não pode apagar usuários com a chave pública, então
 --    esta função faz isso no banco. "security definer" = roda com permissão de administrador,

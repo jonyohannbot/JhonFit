@@ -36,7 +36,9 @@ O app sempre lê e grava primeiro no aparelho, por isso funciona na academia sem
 | `supabase/schema.sql` | Tabela e regras de segurança do banco. |
 | `tests/` | Testes automáticos de navegador (Playwright) e de acessibilidade (axe). |
 | `scripts/check.mjs` | Checagens rápidas de estrutura. |
+| `scripts/backup*.mjs`, `decrypt-backup.mjs`, `restore-backup.mjs` | Backup criptografado, abertura e restauração. |
 | `.github/workflows/ci.yml` | Pipeline de CI/CD. |
+| `.github/workflows/backup.yml` | Backup semanal automático. |
 
 ## Rodar no seu computador
 
@@ -97,6 +99,36 @@ Limitação conhecida: se dois aparelhos editarem **offline ao mesmo tempo** e u
 5. Depois que todos criarem suas contas, desligue **Authentication → Sign In / Providers → Allow new users to sign up** para ninguém mais se cadastrar.
 
 O plano gratuito pausa o projeto após uma semana sem uso. Os dados não se perdem: basta reativar no painel. Enquanto isso o app segue funcionando com os dados do aparelho.
+
+## Contas
+
+- **Manter conectado** (tela de login): ligado, a sessão e os dados ficam no aparelho mesmo depois de fechar o app. Desligado, ficam só até fechar o app/aba; use em aparelhos compartilhados.
+- **Excluir minha conta** (Ajustes → Conta): pede a senha de novo e chama a função `delete_my_account` do banco, que apaga o usuário; os dados dele somem junto.
+- **Cadastro fechado ou por convite:** em *Authentication → Sign In / Providers*, desligue *Allow new users to sign up*. Para convidar alguém, use *Authentication → Users → Invite user*.
+
+## Backup
+
+Todo domingo às 03:17 (Brasília) o GitHub Actions baixa todos os dados e guarda um arquivo **criptografado** (AES-256-GCM) por 90 dias, em *Actions → Backup → (execução) → Artifacts*. Também dá para rodar na hora pelo botão *Run workflow*.
+
+O repositório é público, então os backups precisam ser criptografados: sem a senha, o arquivo não tem utilidade.
+
+**Configuração (uma vez):** em *Settings → Secrets and variables → Actions → New repository secret*, crie:
+
+| Nome | Valor |
+| --- | --- |
+| `SUPABASE_SECRET_KEY` | Supabase → *Project Settings → API Keys → Secret keys* → copiar |
+| `BACKUP_PASSPHRASE` | Uma senha longa (12+ caracteres) que você guarda num gerenciador de senhas. **Sem ela, não há como abrir os backups.** |
+
+**Abrir e restaurar:**
+
+```bash
+node scripts/decrypt-backup.mjs jhonfit-2026-11-15.json.enc          # pede a senha e gera o .json
+SUPABASE_SECRET_KEY=... node scripts/restore-backup.mjs jhonfit-2026-11-15.json [email]
+```
+
+O `.json` aberto contém dados pessoais sem proteção: apague depois de usar.
+
+O GitHub desativa agendamentos de repositórios sem nenhum commit há 60 dias e avisa por e-mail; basta reativar em *Actions*.
 
 ## Segurança e acessibilidade
 

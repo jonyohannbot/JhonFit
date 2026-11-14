@@ -1,0 +1,43 @@
+# Backup semanal dos dados do Jhon Fit.
+# O arquivo é CRIPTOGRAFADO antes de sair do servidor do GitHub: como o repositório é público,
+# qualquer pessoa logada no GitHub conseguiria baixar um artefato sem criptografia.
+#
+# Precisa de dois segredos em Settings → Secrets and variables → Actions:
+#   SUPABASE_SECRET_KEY  chave secreta do Supabase (Project Settings → API Keys → Secret keys)
+#   BACKUP_PASSPHRASE    senha que abre os backups (guarde num gerenciador de senhas; sem ela o backup é inútil)
+name: Backup
+
+on:
+  schedule:
+    - cron: '17 6 * * 0'   # domingo, 03:17 (horário de Brasília)
+  workflow_dispatch:       # botão "Run workflow" para rodar na hora
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup criptografado
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Baixar e criptografar
+        run: node scripts/backup.mjs
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      - name: Guardar o arquivo (90 dias)
+        uses: actions/upload-artifact@v4
+        with:
+          name: jhonfit-backup-${{ github.run_number }}
+          path: backup/*.json.enc
+          retention-days: 90
+          if-no-files-found: error

@@ -13,6 +13,7 @@ const KEY0 = 'jhonfit.v1';
 let KEY = KEY0;   // com login vira 'jhonfit.v1.<id do usuário>': cada conta tem seus dados no aparelho
 const Cloud = window.JFCloud || { enabled: false, user: null, status: 'local', pending: false, markDirty() { }, syncNow() { return Promise.resolve(false); } };
 const VERSION = self.JF_VERSION || 'dev';
+const DS = () => Cloud.store || localStorage;   // onde ficam os dados no aparelho (ver "Manter conectado" em cloud.js)
 const IMG_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -123,14 +124,14 @@ function normalize(o) {
 }
 function loadState() {
   let o = null;
-  try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { o = null; }
+  try { o = JSON.parse(DS().getItem(KEY) || 'null'); } catch (e) { o = null; }
   S = normalize(o); S.custom.forEach(c => EX.set(c.i, c));
 }
 loadState();
 let saveT = null;
 function save(now) {
   clearTimeout(saveT);
-  const w = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio?)'); } Cloud.markDirty(); };
+  const w = () => { try { DS().setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio?)'); } Cloud.markDirty(); };
   if (now === false) saveT = setTimeout(w, 400); else w();
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -759,7 +760,7 @@ VIEWS.settings = () => {
     <div class="card"><div class="acct"><div class="av" aria-hidden="true">${esc((p.name || Cloud.user.email || '?')[0].toUpperCase())}</div>
       <div class="grow"><b class="ellipsis" style="display:block">${esc(Cloud.user.email)}</b><span class="sync ${Cloud.status}" data-sync role="status"><i></i><span>${syncLabel()}</span></span></div></div>
       <div class="sp"></div><div class="btn-row"><button class="btn" data-a="syncNow">${ic('refresh', 'sm')} Sincronizar</button><button class="btn" data-a="signOut">${ic('logout', 'sm')} Sair</button></div>
-      <div style="text-align:center;margin-top:6px"><button class="link-btn" data-a="changePass">Alterar senha</button></div></div>` : ''}
+      <div class="row" style="justify-content:center;gap:20px;margin-top:6px"><button class="link-btn" data-a="changePass">Alterar senha</button><button class="link-btn text-danger" data-a="deleteAcct">Excluir minha conta</button></div></div>` : ''}
     <div class="section-h"${Cloud.enabled && Cloud.user ? '' : ' style="margin-top:6px"'}><h2>Perfil</h2></div>
     <div class="card stack">
       <label class="field"><span>Nome</span><input class="input" value="${esc(p.name)}" data-c="prof" data-k="name" autocomplete="given-name"></label>
@@ -1112,14 +1113,29 @@ const A = {
     await Cloud.signOut(); leaveApp();
   },
   changePass: () => passSheet(false),
-  authMode: el => { const email = $('#au-email') ? $('#au-email').value.trim() : (GATE && GATE.email) || ''; GATE = { mode: el.dataset.m, email }; render(); },
+  deleteAcct: () => {
+    if (!navigator.onLine) { toast('Conecte-se à internet para excluir a conta'); return; }
+    openSheet(`<h3>Excluir sua conta?</h3><p class="sub">Isto apaga <b>definitivamente</b> sua conta e todos os seus treinos, histórico, peso e medidas, em todos os aparelhos. Não dá para desfazer.</p>
+      <p class="sub" style="margin-top:8px">Cópias de segurança criptografadas podem guardar seus dados por até 90 dias antes de serem descartadas.</p>
+      <div class="sp"></div><form class="stack" data-form="delacct" novalidate>
+      <div class="field"><span><label for="da-pass">Digite sua senha para confirmar</label></span><div class="pw"><input class="input" id="da-pass" type="password" autocomplete="current-password" required>
+      <button type="button" class="pw-eye" data-a="pwEye" aria-label="Mostrar senha" aria-pressed="false">${ic('eye')}</button></div></div>
+      <p class="form-err" id="da-err" role="alert" hidden></p>
+      <button class="btn danger" type="submit">Excluir conta definitivamente</button>
+      <button class="btn" type="button" data-a="closeSheet">Cancelar</button></form>`);
+  },
+  authMode: el => {
+    const email = $('#au-email') ? $('#au-email').value.trim() : (GATE && GATE.email) || '';
+    const remember = $('#au-remember') ? $('#au-remember').checked : GATE && GATE.remember;
+    GATE = { mode: el.dataset.m, email, remember }; render();
+  },
   pwEye: el => {
     const inp = $('input', el.closest('.pw')), show = inp.type === 'password';
     inp.type = show ? 'text' : 'password'; el.innerHTML = ic(show ? 'eyeOff' : 'eye');
     el.setAttribute('aria-pressed', show); el.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha'); inp.focus();
   },
   restoreSeed: () => { S.routines.push(...seedRoutines()); save(); toast('Treinos de exemplo adicionados'); go('routines'); },
-  wipe: async () => { if (await confirmSheet({ title: 'Apagar todos os dados?', text: Cloud.enabled && Cloud.user ? 'Treinos, histórico, peso e medidas serão apagados da sua conta, em todos os aparelhos. Exporte um backup antes.' : 'Treinos, histórico, peso e medidas serão apagados deste aparelho. Exporte um backup antes.', ok: 'Apagar tudo', danger: true })) { localStorage.removeItem(KEY); S = defaults(); S.onboarded = true; save(); go('home'); render(); } },
+  wipe: async () => { if (await confirmSheet({ title: 'Apagar todos os dados?', text: Cloud.enabled && Cloud.user ? 'Treinos, histórico, peso e medidas serão apagados da sua conta, em todos os aparelhos. Exporte um backup antes.' : 'Treinos, histórico, peso e medidas serão apagados deste aparelho. Exporte um backup antes.', ok: 'Apagar tudo', danger: true })) { DS().removeItem(KEY); S = defaults(); S.onboarded = true; save(); go('home'); render(); } },
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
@@ -1233,7 +1249,7 @@ function mergeData(local, remote) {
 function applyRemote(data) {
   const active = S.active;
   S = normalize(data); S.active = active; S.custom.forEach(c => EX.set(c.i, c));
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* armazenamento cheio */ }
+  try { DS().setItem(KEY, JSON.stringify(S)); } catch (e) { /* armazenamento cheio */ }
   const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if (!GATE && !sheetOpen && !typing && route().name !== 'edit') render(true);
 }
@@ -1242,7 +1258,7 @@ let curUid = null, pendingRecovery = false;
 async function enterApp(u) {
   if (curUid === u.id) return;
   curUid = u.id; KEY = KEY0 + '.' + u.id;
-  const fresh = localStorage.getItem(KEY) == null;   // primeira vez desta conta neste aparelho
+  const fresh = DS().getItem(KEY) == null;   // primeira vez desta conta neste aparelho
   loadState();
   Cloud.attach({ getData: cloudData, merge: mergeData, applyRemote, onStatus: paintSync });
   if (fresh) {   // espera a nuvem responder antes de mostrar o app, para não exibir dados vazios por engano
@@ -1274,11 +1290,14 @@ function renderGate() {
   const emailF = `<label class="field"><span>E-mail</span><input class="input" id="au-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(g.email || '')}" placeholder="voce@email.com" required></label>`;
   const passF = (ac, hint) => `<div class="field"><span><label for="au-pass">Senha</label></span><div class="pw"><input class="input" id="au-pass" type="password" autocomplete="${ac}" ${hint ? 'aria-describedby="au-hint" minlength="8"' : ''} required>
     <button type="button" class="pw-eye" data-a="pwEye" aria-label="Mostrar senha" aria-pressed="false">${ic('eye')}</button></div>${hint ? `<p class="hint" id="au-hint">${hint}</p>` : ''}</div>`;
+  const rem = g.remember !== undefined ? g.remember : Cloud.remember;
+  const rememberF = `<label class="check"><input type="checkbox" id="au-remember" aria-describedby="au-rem-hint"${rem ? ' checked' : ''}><span>Manter conectado</span></label>
+    <span class="sr-only" id="au-rem-hint">Desmarque em aparelhos compartilhados: você sai ao fechar o app.</span>`;
   const err = `<p class="form-err ${g.ok ? 'form-ok' : ''}" id="au-err" role="alert"${g.error || g.ok ? '' : ' hidden'}>${esc(g.error || g.ok || '')}</p>`;
   let body;
   if (m === 'signup') body = `${tabs}<form data-form="auth" novalidate>
       <label class="field"><span>Nome</span><input class="input" id="au-name" autocomplete="given-name" placeholder="Como quer ser chamado(a)?" required></label>
-      ${emailF}${passF('new-password', 'Pelo menos 8 caracteres.')}${err}
+      ${emailF}${passF('new-password', 'Pelo menos 8 caracteres.')}<div class="auth-row">${rememberF}</div>${err}
       <button class="btn primary" type="submit" id="au-go">Criar conta</button></form>
       <p class="auth-foot">Cada pessoa tem a própria conta: treinos, histórico e medidas ficam separados e protegidos por senha.</p>`;
   else if (m === 'forgot') body = `<h2>Recuperar senha</h2><p class="lead">Informe o e-mail da sua conta. Vamos enviar um link para você criar uma nova senha.</p>
@@ -1287,9 +1306,9 @@ function renderGate() {
   else if (m === 'sent') body = `<div class="empty" style="padding:0"><div class="ill">${ic('mail', 'lg')}</div></div><h2 style="text-align:center">Confira seu e-mail</h2>
       <p class="lead" style="text-align:center">${g.kind === 'reset' ? 'Se existir uma conta com' : 'Enviamos um link de confirmação para'} <b>${esc(g.email)}</b>${g.kind === 'reset' ? ', você receberá um link para criar uma nova senha.' : '. Toque nele para ativar a conta e depois volte aqui para entrar.'} Não chegou? Veja a caixa de spam.</p>
       <button class="btn" data-a="authMode" data-m="signin">Voltar para o login</button>`;
-  else body = `${tabs}<form data-form="auth" novalidate>${emailF}${passF('current-password')}${err}
-      <button class="btn primary" type="submit" id="au-go">Entrar</button>
-      <button type="button" class="link-btn" data-a="authMode" data-m="forgot">Esqueci minha senha</button></form>
+  else body = `${tabs}<form data-form="auth" novalidate>${emailF}${passF('current-password')}
+      <div class="auth-row">${rememberF}<button type="button" class="link-btn" data-a="authMode" data-m="forgot">Esqueci minha senha</button></div>${err}
+      <button class="btn primary" type="submit" id="au-go">Entrar</button></form>
       <p class="auth-foot">Seus treinos ficam salvos na sua conta e o app funciona mesmo sem internet.</p>`;
   document.title = ({ signup: 'Criar conta', forgot: 'Recuperar senha', sent: 'Confira seu e-mail' }[m] || 'Entrar') + ' · Jhon Fit';
   view.innerHTML = `<div class="auth">${brand}${body}</div>`;
@@ -1311,6 +1330,19 @@ document.addEventListener('submit', async e => {
   const form = e.target, kind = form.dataset.form; if (!kind) return;
   e.preventDefault();
   const btn = $('button[type="submit"]', form); if (btn.classList.contains('busy')) return;
+  if (kind === 'delacct') {
+    const inp = $('#da-pass');
+    if (!inp.value) { formError('da-err', 'Digite sua senha.', inp); return; }
+    setBusy(btn, true, 'Excluindo…');
+    try {
+      await Cloud.deleteAccount(inp.value);
+      DS().removeItem(KEY);
+      hideSheet(); curUid = null;
+      await Cloud.signOut();
+      leaveApp({ mode: 'signin', ok: 'Sua conta foi excluída. Obrigado por usar o Jhon Fit.' });
+    } catch (err) { setBusy(btn, false); formError('da-err', err.message, inp); }
+    return;
+  }
   if (kind === 'pass') {
     const inp = $('#np-pass'), pw = inp.value;
     if (pw.length < 8) { formError('np-err', 'A senha precisa ter pelo menos 8 caracteres.', inp); return; }
@@ -1326,6 +1358,7 @@ document.addEventListener('submit', async e => {
   if (m !== 'forgot' && !pw) { formError('au-err', 'Informe sua senha.', passEl); return; }
   if (m === 'signup' && pw.length < 8) { formError('au-err', 'A senha precisa ter pelo menos 8 caracteres.', passEl); return; }
   formError('au-err', ''); GATE.email = email;
+  const remEl = $('#au-remember'); if (remEl) { GATE.remember = remEl.checked; Cloud.setRemember(remEl.checked); }
   setBusy(btn, true, m === 'signup' ? 'Criando conta…' : m === 'forgot' ? 'Enviando…' : 'Entrando…');
   try {
     if (m === 'forgot') { await Cloud.resetPassword(email); GATE = { mode: 'sent', kind: 'reset', email }; render(); }

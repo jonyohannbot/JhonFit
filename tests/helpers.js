@@ -11,7 +11,7 @@ function session() {
 
 /** Liga o backend falso em um contexto do navegador. Devolve o "banco" para os testes inspecionarem. */
 async function mockBackend(context) {
-  const db = { rows: new Map(), writes: 0 };
+  const db = { rows: new Map(), writes: 0, deleted: false };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*', 'content-type': 'application/json' };
   const json = (route, status, body) => route.fulfill({ status, headers: cors, body: body === undefined ? '' : JSON.stringify(body) });
 
@@ -26,6 +26,7 @@ async function mockBackend(context) {
     }
     if (url.includes('/auth/v1/logout')) return json(route, 204);
     if (url.includes('/auth/v1/user')) return json(route, 200, session().user);
+    if (url.includes('/rest/v1/rpc/delete_my_account')) { db.rows.delete(USER.id); db.deleted = true; return json(route, 204); }
     if (url.includes('/rest/v1/user_data')) {
       const uid = (url.match(/user_id=eq\.([0-9a-f-]+)/) || [])[1] || (body && body.user_id);
       const row = db.rows.get(uid);
@@ -50,10 +51,11 @@ function trackErrors(page) {
   return errors;
 }
 
-async function signIn(page) {
+async function signIn(page, { remember = true } = {}) {
   await page.goto('/');
   await page.getByLabel('E-mail').fill(USER.email);
   await page.getByLabel('Senha', { exact: true }).fill(USER.password);
+  await page.getByLabel('Manter conectado').setChecked(remember);
   await page.getByRole('button', { name: 'Entrar', exact: true }).last().click();
 }
 

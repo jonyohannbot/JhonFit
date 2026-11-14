@@ -97,6 +97,53 @@ test.describe('conta e sincronização', () => {
   });
 });
 
+test.describe('manter conectado', () => {
+  test('ligado: continua logado ao reabrir o app', async ({ page, context }) => {
+    await mockBackend(context);
+    await signIn(page, { remember: true });
+    await page.getByRole('button', { name: 'Pular por enquanto' }).click();
+    const again = await context.newPage();            // nova aba = app fechado e aberto de novo
+    await again.goto('/');
+    await expect(again.getByRole('button', { name: 'Ajustes e conta' })).toBeVisible();
+  });
+
+  test('desligado: pede login de novo ao reabrir o app', async ({ page, context }) => {
+    await mockBackend(context);
+    await signIn(page, { remember: false });
+    await page.getByRole('button', { name: 'Pular por enquanto' }).click();
+    await page.reload();                              // recarregar a mesma aba mantém a sessão
+    await expect(page.getByRole('button', { name: 'Ajustes e conta' })).toBeVisible();
+    const again = await context.newPage();
+    await again.goto('/');
+    await expect(again.getByLabel('E-mail')).toBeVisible();
+    await expect(again.getByLabel('Manter conectado')).not.toBeChecked();   // lembra a escolha
+    const tokens = await again.evaluate(() => Object.keys(localStorage).filter(k => k.includes('auth-token') || k.startsWith('jhonfit.v1.')));
+    expect(tokens).toEqual([]);                       // nada da conta ficou gravado de forma permanente
+  });
+});
+
+test.describe('excluir conta', () => {
+  test('pede a senha, apaga na nuvem e no aparelho e volta ao login', async ({ page, context }) => {
+    const db = await mockBackend(context);
+    await signIn(page);
+    await page.getByRole('button', { name: 'Pular por enquanto' }).click();
+    await expect.poll(() => db.rows.has(USER.id)).toBe(true);
+    await page.getByRole('button', { name: 'Ajustes e conta' }).click();
+    await page.getByRole('button', { name: 'Excluir minha conta' }).click();
+    const dlg = page.getByRole('dialog');
+    await dlg.getByLabel('Digite sua senha para confirmar').fill('errada');
+    await dlg.getByRole('button', { name: 'Excluir conta definitivamente' }).click();
+    await expect(dlg.getByRole('alert')).toHaveText('Senha incorreta.');
+    expect(db.deleted).toBe(false);
+    await dlg.getByLabel('Digite sua senha para confirmar').fill(USER.password);
+    await dlg.getByRole('button', { name: 'Excluir conta definitivamente' }).click();
+    await expect(page.getByText('Sua conta foi excluída.', { exact: false })).toBeVisible();
+    expect(db.deleted).toBe(true);
+    const left = await page.evaluate(() => Object.keys(localStorage).filter(k => /^jhonfit\.(v1\.|sync\.|user)/.test(k) || k.includes('auth-token')));
+    expect(left).toEqual([]);
+  });
+});
+
 test.describe('acessibilidade (axe, WCAG 2.1 AA)', () => {
   const scan = async page => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations
     .map(v => `${v.id}: ${v.help} → ${v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(' | ')}`);

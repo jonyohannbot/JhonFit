@@ -38,6 +38,26 @@ create policy "apagar os próprios dados" on public.user_data
 revoke all on public.user_data from anon;
 grant select, insert, update, delete on public.user_data to authenticated;
 
+-- 4) "Excluir minha conta": o app não pode apagar usuários com a chave pública, então
+--    esta função faz isso no banco. "security definer" = roda com permissão de administrador,
+--    mas só apaga QUEM CHAMOU (auth.uid()). Os dados em user_data somem junto (on delete cascade).
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'não autenticado' using errcode = '28000';
+  end if;
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Consultas úteis para explorar seus dados no SQL Editor (lá você é administrador
 -- e enxerga todas as linhas; no app, cada usuário só vê a sua).

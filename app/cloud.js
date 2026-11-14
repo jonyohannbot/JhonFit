@@ -15,14 +15,29 @@
   const LAST_USER = 'jhonfit.user';
   const metaKey = uid => 'jhonfit.sync.' + uid;
 
+  /* "Manter conectado": a escolha fica no localStorage. Ligado, sessão e dados ficam no localStorage (sobrevivem
+     a fechar o app). Desligado, ficam no sessionStorage, que o navegador apaga ao fechar a aba/app:
+     é o modo para aparelho compartilhado. */
+  const REMEMBER = 'jhonfit.remember';
+  const remember = () => { try { return localStorage.getItem(REMEMBER) !== '0'; } catch (e) { return true; } };
+  const store = () => (remember() ? localStorage : sessionStorage);
+  const other = () => (remember() ? sessionStorage : localStorage);
+  function setRemember(on) { try { localStorage.setItem(REMEMBER, on ? '1' : '0'); } catch (e) { } }
+  /* Onde a biblioteca do Supabase guarda o token de login: segue a escolha acima */
+  const authStorage = {
+    getItem: k => store().getItem(k),
+    setItem: (k, v) => { store().setItem(k, v); other().removeItem(k); },
+    removeItem: k => { localStorage.removeItem(k); sessionStorage.removeItem(k); },
+  };
+
   let sb = null, user = null, hooks = null;
   let meta = { base: null, dirty: false };
   let status = enabled ? 'idle' : 'local';   // local | idle | syncing | synced | offline | error
   let lastError = '', lastSyncAt = 0, lastSent = '', timer = null, running = null, again = false;
   const authListeners = [];
 
-  const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
-  const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* armazenamento cheio */ } };
+  const readJSON = (k, d) => { try { return JSON.parse(store().getItem(k)) || d; } catch (e) { return d; } };
+  const writeJSON = (k, v) => { try { store().setItem(k, JSON.stringify(v)); } catch (e) { /* armazenamento cheio */ } };
   const publicUser = u => u ? { id: u.id, email: u.email || '', name: (u.user_metadata && u.user_metadata.name) || '' } : null;
   const setStatus = (s, err) => { status = s; lastError = err || ''; if (hooks && hooks.onStatus) hooks.onStatus(s); };
   const isNetErr = e => !navigator.onLine || /fetch|network|load failed|timeout/i.test(String((e && e.message) || e));
@@ -32,6 +47,7 @@
     const m = String((e && (e.message || e.error_description)) || e || '').toLowerCase();
     const c = (e && e.code) || '';
     if (isNetErr(e)) return 'Sem conexão. Verifique a internet e tente de novo.';
+    if (c === 'wrong_password') return 'Senha incorreta.';
     if (c === 'invalid_credentials' || m.includes('invalid login')) return 'E-mail ou senha incorretos.';
     if (c === 'email_not_confirmed' || m.includes('not confirmed')) return 'Confirme seu e-mail pelo link que enviamos antes de entrar.';
     if (c === 'user_already_exists' || m.includes('already registered')) return 'Já existe uma conta com este e-mail. Use “Entrar”.';
@@ -50,13 +66,13 @@
   async function init() {
     if (!enabled) return null;
     sb = self.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: authStorage },
     });
     sb.auth.onAuthStateChange((event, session) => {
       // Chamadas ao Supabase aqui dentro podem travar a biblioteca: adiamos com setTimeout.
       setTimeout(() => {
         const u = publicUser(session && session.user);
-        if (event === 'SIGNED_OUT') { user = null; localStorage.removeItem(LAST_USER); }
+        if (event === 'SIGNED_OUT') { user = null; authStorage.removeItem(LAST_USER); }
         else if (u) { user = u; writeJSON(LAST_USER, u); }
         authListeners.forEach(f => f(event, u));
       }, 0);
@@ -91,11 +107,22 @@
     const { error } = await sb.auth.updateUser({ password });
     if (error) throw fail(error);
   }
+  /* Exclui a conta de vez. Pede a senha de novo (confirma que é o dono, e não alguém com o celular desbloqueado)
+     e chama a função delete_my_account do banco, que apaga o usuário; os dados dele somem junto (on delete cascade). */
+  async function deleteAccount(password) {
+    if (!navigator.onLine) throw fail(new Error('network'));
+    const re = await sb.auth.signInWithPassword({ email: user.email, password });
+    if (re.error) throw fail(re.error.code === 'invalid_credentials' ? { code: 'wrong_password' } : re.error);
+    const { error } = await sb.rpc('delete_my_account');
+    if (error) throw fail(error);
+    clearTimeout(timer); timer = null;
+    authStorage.removeItem(metaKey(user.id)); meta = { base: null, dirty: false };
+  }
   async function signOut() {
     clearTimeout(timer); timer = null;
     try { await sb.auth.signOut({ scope: 'local' }); } catch (e) { /* offline: limpa só o aparelho */ }
     user = null; hooks = null; meta = { base: null, dirty: false }; lastSent = '';
-    localStorage.removeItem(LAST_USER); setStatus('idle');
+    authStorage.removeItem(LAST_USER); setStatus('idle');
   }
 
   /* ---------------- Sincronização ---------------- */
@@ -183,7 +210,9 @@
   }
 
   self.JFCloud = {
-    enabled, init, signIn, signUp, signOut, resetPassword, updatePassword,
+    enabled, init, signIn, signUp, signOut, resetPassword, updatePassword, deleteAccount, setRemember,
+    get remember() { return remember(); },
+    get store() { return store(); },
     onAuth: f => authListeners.push(f),
     attach, markDirty, syncNow,
     get user() { return user; },

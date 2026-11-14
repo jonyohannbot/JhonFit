@@ -4,6 +4,6 @@
    NUNCA coloque aqui a chave "service_role" / "secret".
    Deixe vazio para rodar em modo local (sem login, dados só no aparelho). */
 self.JF_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: '',
+  supabaseUrl: 'https://njopfmcyglslmvgaicrl.supabase.co',
+  supabaseKey: 'sb_publishable_M0QqRDXav65ueWaBHRU4VA_NiOsCCl9',
 };

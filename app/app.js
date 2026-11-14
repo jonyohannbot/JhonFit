@@ -124,7 +124,7 @@ function normalize(o) {
 }
 function loadState() {
   let o = null;
-  try { o = JSON.parse(DS().getItem(KEY) || 'null'); } catch (e) { o = null; }
+  try { o = JSON.parse(DS().getItem(KEY) || 'null'); } catch (e) { /* dado corrompido: começa do zero */ }
   S = normalize(o); S.custom.forEach(c => EX.set(c.i, c));
 }
 loadState();

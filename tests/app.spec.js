@@ -172,7 +172,7 @@ test.describe('acessibilidade (axe, WCAG 2.1 AA)', () => {
     expect(await scan(page)).toEqual([]);
     await page.getByRole('button', { name: 'Pular por enquanto' }).click();
     await page.getByRole('navigation').getByRole('link', { name: 'Treinos' }).click();
-    await page.getByRole('button', { name: /Perna/ }).first().click();
+    await page.getByRole('button', { name: /^Perna/ }).first().click();
     await expect(page.getByRole('button', { name: 'Editar' })).toBeVisible();
     expect(await scan(page)).toEqual([]);
     await page.getByRole('button', { name: 'Editar' }).click();

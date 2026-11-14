@@ -2,6 +2,13 @@ const { test, expect } = require('@playwright/test');
 const { AxeBuilder } = require('@axe-core/playwright');
 const { USER, mockBackend, trackErrors, signIn } = require('./helpers');
 
+// Os testes nunca usam o config.js de produção: por padrão o app roda em modo local (sem backend).
+// Os testes de conta chamam mockBackend(), que registra uma rota mais nova e tem prioridade sobre esta.
+test.beforeEach(async ({ context }) => {
+  await context.route('**/config.js', route => route.fulfill({ contentType: 'application/javascript', body: "self.JF_CONFIG={supabaseUrl:'',supabaseKey:''};" }));
+  await context.route('https://*.supabase.co/**', route => route.abort());   // garantia extra: nada sai para o projeto real
+});
+
 test.describe('modo local (sem backend configurado)', () => {
   test('abre, navega pelas abas e não gera erros', async ({ page }) => {
     const errors = trackErrors(page);
